@@ -19,7 +19,13 @@ if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
 
-class UploadHandler(server.SimpleHTTPRequestHandler):
+# 创建支持多线程的 HTTP 服务器类
+class ThreadedHTTPServer(socketserver.ThreadingMixIn, server.HTTPServer):
+    pass
+
+
+# 自定义请求处理程序
+class CustomHandler(server.SimpleHTTPRequestHandler):
     # 把根目录改为上传目录
     def translate_path(self, path):
         # 这里重写路径，将所有访问都定位到 UPLOAD_DIR
@@ -98,8 +104,11 @@ class UploadHandler(server.SimpleHTTPRequestHandler):
                 file_item = form['file']
                 if file_item.filename:
                     self.filename = os.path.basename(file_item.filename)
-                    if self.filename in os.listdir(UPLOAD_DIR):
-                        self.filename = f"{self.filename.split('.')[0]}-{username}.{self.filename.split('.')[1]}"
+                    # 获取文件列表并过滤掉目录
+                    files_list = [f for f in os.listdir(UPLOAD_DIR) if os.path.isfile(os.path.join(UPLOAD_DIR, f))]
+                    if self.filename in files_list:
+                        if len(self.filename.split('.')) == 2:
+                            self.filename = f"{self.filename.split('.')[0]}-{username}.{self.filename.split('.')[1]}"
                     filepath = os.path.join(UPLOAD_DIR, self.filename)
                     with open(filepath, 'wb') as f:
                         f.write(file_item.file.read())
@@ -171,6 +180,18 @@ class UploadHandler(server.SimpleHTTPRequestHandler):
     #             self.send_error(404, "File not found")
 
 
-with socketserver.TCPServer(("", PORT), UploadHandler) as httpd:
+# 单线程
+# with socketserver.TCPServer(("", PORT), CustomHandler) as httpd:
+#     print(f"Serving at port {PORT}, root at '{os.path.abspath(UPLOAD_DIR)}'")
+#     httpd.serve_forever()
+
+
+# 多线程
+with ThreadedHTTPServer(("", PORT), CustomHandler) as httpd:
     print(f"Serving at port {PORT}, root at '{os.path.abspath(UPLOAD_DIR)}'")
-    httpd.serve_forever()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    httpd.server_close()
+    print("Server stopped.")
